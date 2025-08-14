@@ -1,87 +1,34 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel,Field,computed_field
-from typing import Literal, Optional,Annotated
-import pickle
-import pandas as pd
-
+from schema.user_input import UserInput
+from model.predict import predict, MODEL_VERSION,model
+from schema.response_model import Response
 
 app = FastAPI()
 
-with open('model.pkl', 'rb') as f:
-    model = pickle.load(f)
-    
-    
-tier_1_cities = ["Mumbai", "Delhi", "Bangalore", "Chennai", "Kolkata", "Hyderabad", "Pune"]
-tier_2_cities = [
-    "Jaipur", "Chandigarh", "Indore", "Lucknow", "Patna", "Ranchi", "Visakhapatnam", "Coimbatore",
-    "Bhopal", "Nagpur", "Vadodara", "Surat", "Rajkot", "Jodhpur", "Raipur", "Amritsar", "Varanasi",
-    "Agra", "Dehradun", "Mysore", "Jabalpur", "Guwahati", "Thiruvananthapuram", "Ludhiana", "Nashik",
-    "Allahabad", "Udaipur", "Aurangabad", "Hubli", "Belgaum", "Salem", "Vijayawada", "Tiruchirappalli",
-    "Bhavnagar", "Gwalior", "Dhanbad", "Bareilly", "Aligarh", "Gaya", "Kozhikode", "Warangal",
-    "Kolhapur", "Bilaspur", "Jalandhar", "Noida", "Guntur", "Asansol", "Siliguri"]
 
+@app.get("/")  
+def home():
+    return {"message": "Welcome to the Insurance Premium Prediction API"}
 
+@app.get("/health")
+def health_check():
+    return {"status": "OK",
+            "version": MODEL_VERSION,
+            "model": model is not None}
 
-
-class UserInput(BaseModel):
-
-    age: Annotated[int, Field(..., gt=0,lt = 120, description="Age of the user in years")]
-    weight: Annotated[float, Field(..., gt=0, description="Weight of the user in kg")]
-    height: Annotated[float, Field(..., gt=0,lt = 2.5, description="Height of the user in m")]
-    income_lpa: Annotated[float, Field(..., gt=0, description="Income of the user in LPA")]
-    smoker: Annotated[bool, Field(..., description="Is the user a smoker?")]
-    city: Annotated[str, Field(..., description="City of the user")]
-    occupation: Annotated[Literal['retired', 'freelancer', 'student', 'government_job',
-       'business_owner', 'unemployed', 'private_job'], Field(..., description="Occupation of the user")]
-
-
-    @computed_field
-    @property
-    def bmi(self) -> float:
-        return self.weight / (self.height ** 2)
-    
-    @computed_field
-    @property
-    def lifestyle_risk(self) -> str:
-        if self.smoker and self.bmi > 30:
-            return "High"
-        elif self.smoker or self.bmi > 27:
-            return "Medium"
-        else:
-            return "Low"
-
-    @computed_field
-    @property
-    def age_group(self) -> str:
-        if self.age < 25:
-            return "Young"
-        elif self.age < 45:
-            return "Adult"
-        elif self.age < 60:
-            return "Middle age"
-        else:
-            return "Senior"
-     
-    @computed_field
-    @property
-    def city_tier(self) -> int:
-        if self.city in tier_1_cities:
-            return 1
-        elif self.city in tier_2_cities:
-            return 2
-        else:
-            return 3
-        
-@app.post("/predict")
+@app.post("/predict", response_model=Response)
 def predict_insurance(input_data: UserInput):
-    input_df = pd.DataFrame([{
+    user_input ={
         "bmi": input_data.bmi,
         "age_group": input_data.age_group,
         "city_tier": input_data.city_tier,
         "income_lpa": input_data.income_lpa,
         "lifestyle_risk": input_data.lifestyle_risk,
         "occupation": input_data.occupation
-    }])
-    prediction = model.predict(input_df)
-    return JSONResponse(status_code=200, content={"prediction_category": prediction[0]})
+    }
+    try:
+        prediction = predict(user_input)
+        return JSONResponse(status_code=200, content={"response": prediction})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})

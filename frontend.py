@@ -32,13 +32,14 @@ if st.button("Predict Premium Category"):
         response = requests.post(API_URL, json=input_data)
         result = response.json()
 
-        if response.status_code == 200 and "prediction_category" in result:
-            prediction = result["prediction_category"]
-            st.success(f"Predicted Insurance Premium Category: **{prediction}**")
-
+        if response.status_code == 200 and "response" in result:
+            prediction = result["response"]
+            st.success(f"Predicted Insurance Premium Category: **{prediction['prediction_category']}**")
+            st.write("🔍 Confidence:", prediction["confidence"])
+            st.write("📊 Class Probabilities:")
+            st.json(prediction["class_probabilities"])
         else:
             st.error(f"API Error: {response.status_code}")
             st.write(result)
-
     except requests.exceptions.ConnectionError:
         st.error("❌ Could not connect to the FastAPI server. Make sure it's running.")
